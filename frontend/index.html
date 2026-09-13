@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>First Web App</title>
+</head>
+<body>
+
+    <h1>Приветствие</h1>
+
+    <input id="nameInput" type="text" placeholder="Введите имя">
+    <button onclick="sendName()">Отправить</button>
+
+    <p id="result"></p>
+
+    <script>
+        async function sendName() {
+            const name = document.getElementById("nameInput").value;
+
+            const response = await fetch("http://127.0.0.1:8000/hello", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    name: name
+                })
+            });
+
+            const data = await response.json();
+
+            document.getElementById("result").textContent = data.message;
+        }
+    </script>
+
+</body>
+</html>
