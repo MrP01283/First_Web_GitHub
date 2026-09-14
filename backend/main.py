@@ -16,6 +16,10 @@ class UserData(BaseModel):
     name: str
 
 
+class TextData(BaseModel):
+    text: str
+
+
 @app.get("/")
 def root():
     return {"message": "Backend работает"}
@@ -24,3 +28,8 @@ def root():
 @app.post("/hello")
 def hello(data: UserData):
     return {"message": f"Привет, {data.name}!"}
+
+
+@app.post("/summarize")
+def summarize(data: TextData):
+    return {"result": data.text[:100]}
