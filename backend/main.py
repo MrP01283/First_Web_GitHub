@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -16,7 +16,7 @@ class UserData(BaseModel):
     name: str
 
 
-class TextData(BaseModel):
+class SummarizeRequest(BaseModel):
     text: str
 
 
@@ -31,5 +31,8 @@ def hello(data: UserData):
 
 
 @app.post("/summarize")
-def summarize(data: TextData):
+def summarize(data: SummarizeRequest):
+    if data.text.strip() == "":
+        raise HTTPException(status_code=400, detail="Текст не должен быть пустым")
+
     return {"result": data.text[:100]}

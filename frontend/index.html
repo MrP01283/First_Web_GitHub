@@ -54,6 +54,11 @@
             const text = document.getElementById("summaryInput").value;
             const summaryResult = document.getElementById("summaryResult");
 
+            if (text.trim() === "") {
+                summaryResult.textContent = "Введите текст";
+                return;
+            }
+
             try {
                 const response = await fetch("http://127.0.0.1:8000/summarize", {
                     method: "POST",
