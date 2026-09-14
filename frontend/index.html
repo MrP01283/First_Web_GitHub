@@ -16,6 +16,12 @@
     <script>
         async function sendName() {
             const name = document.getElementById("nameInput").value;
+            const result = document.getElementById("result");
+
+            if (name.trim() === "") {
+                result.textContent = "Введите имя";
+                return;
+            }
 
             const response = await fetch("http://127.0.0.1:8000/hello", {
                 method: "POST",
@@ -29,7 +35,7 @@
 
             const data = await response.json();
 
-            document.getElementById("result").textContent = data.message;
+            result.textContent = data.message;
         }
     </script>
 
