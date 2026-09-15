@@ -3,6 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <title>First Web App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 760px;
+            margin: 32px auto;
+            padding: 0 16px;
+            line-height: 1.5;
+        }
+
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 8px;
+            padding: 10px;
+            resize: vertical;
+        }
+
+        button,
+        select {
+            margin-top: 10px;
+            padding: 8px 12px;
+        }
+
+        .summary-tools {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .counter {
+            margin: 4px 0 0;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .summary-button.loading {
+            background: #888;
+            color: white;
+            cursor: not-allowed;
+            opacity: 0.8;
+        }
+
+        .loading-indicator {
+            display: none;
+            margin-top: 10px;
+            color: #555;
+        }
+
+        .loading-indicator.active {
+            display: inline-flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid #ccc;
+            border-top-color: #333;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
 </head>
 <body>
 
@@ -13,15 +83,72 @@
 
     <p id="result"></p>
 
-    <h1>Краткое содержание</h1>
+    <h1>AI-сокращение текста</h1>
 
-    <textarea id="summaryInput" rows="8" cols="60" placeholder="Введите текст"></textarea>
-    <br>
-    <button onclick="sendSummary()">Сократить</button>
+    <textarea id="summaryInput" rows="8" placeholder="Вставьте большой текст, а AI выделит главное"></textarea>
+    <p id="inputCounter" class="counter">0 символов</p>
+
+    <div class="summary-tools">
+        <select id="summaryStyle">
+            <option value="short">Коротко</option>
+            <option value="detailed">Подробно</option>
+            <option value="list">Список</option>
+        </select>
+        <button id="summaryButton" class="summary-button" onclick="sendSummary()">Сократить</button>
+        <button onclick="clearSummary()">Очистить</button>
+    </div>
+
+    <div id="summaryLoading" class="loading-indicator">
+        <span class="spinner"></span>
+        <span>AI сокращает текст...</span>
+    </div>
 
     <p id="summaryResult"></p>
+    <p id="outputCounter" class="counter">0 символов в результате</p>
 
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
+        const summaryInput = document.getElementById("summaryInput");
+        const inputCounter = document.getElementById("inputCounter");
+        const outputCounter = document.getElementById("outputCounter");
+
+        summaryInput.addEventListener("input", updateInputCounter);
+
+        function updateInputCounter() {
+            inputCounter.textContent = `${summaryInput.value.length} символов`;
+        }
+
+        function updateOutputCounter(text) {
+            outputCounter.textContent = `${text.length} символов в результате`;
+        }
+
+        function renderMarkdown(text) {
+            const safeText = text
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;");
+
+            return marked.parse(safeText);
+        }
+
+        function setSummaryLoading(isLoading) {
+            const summaryButton = document.getElementById("summaryButton");
+            const summaryLoading = document.getElementById("summaryLoading");
+
+            summaryButton.disabled = isLoading;
+            summaryButton.classList.toggle("loading", isLoading);
+            summaryLoading.classList.toggle("active", isLoading);
+        }
+
+        function clearSummary() {
+            const summaryResult = document.getElementById("summaryResult");
+
+            summaryInput.value = "";
+            summaryResult.innerHTML = "";
+            updateInputCounter();
+            updateOutputCounter("");
+        }
+
         async function sendName() {
             const name = document.getElementById("nameInput").value;
             const result = document.getElementById("result");
@@ -51,13 +178,19 @@
         }
 
         async function sendSummary() {
-            const text = document.getElementById("summaryInput").value;
+            const text = summaryInput.value;
+            const style = document.getElementById("summaryStyle").value;
             const summaryResult = document.getElementById("summaryResult");
 
             if (text.trim() === "") {
                 summaryResult.textContent = "Введите текст";
+                updateOutputCounter(summaryResult.textContent);
                 return;
             }
+
+            setSummaryLoading(true);
+            summaryResult.textContent = "";
+            updateOutputCounter("");
 
             try {
                 const response = await fetch("http://127.0.0.1:8000/summarize", {
@@ -66,15 +199,21 @@
                         "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
-                        text: text
+                        text: text,
+                        style: style
                     })
                 });
 
                 const data = await response.json();
+                const resultText = data.result || data.detail || "Не удалось получить результат";
 
-                summaryResult.textContent = data.result;
+                summaryResult.innerHTML = renderMarkdown(resultText);
+                updateOutputCounter(resultText);
             } catch (error) {
                 summaryResult.textContent = "Ошибка соединения";
+                updateOutputCounter(summaryResult.textContent);
+            } finally {
+                setSummaryLoading(false);
             }
         }
     </script>

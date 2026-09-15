@@ -28,6 +28,7 @@ class UserData(BaseModel):
 
 class SummarizeRequest(BaseModel):
     text: str
+    style: str = "short"
 
 
 @app.get("/")
@@ -48,15 +49,19 @@ def summarize(data: SummarizeRequest):
     if client is None:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY не найден в .env")
 
+    style_prompts = {
+        "short": "Сократи текст очень кратко, сохранив основные мысли.",
+        "detailed": "Сократи текст подробнее, сохранив важные детали и общий смысл.",
+        "list": "Сократи текст в виде списка ключевых пунктов."
+    }
+    summarize_prompt = style_prompts.get(data.style, style_prompts["short"])
+
     try:
-        response = client.interactions.create(
-            model="gemini-3.8-flash",
-            input=f"Кратко сократи следующий текст, сохранив основные мысли:\n\n{data.text}",
-            generation_config={
-                "thinking_level": "low"
-            }
+        response = client.models.generate_content(
+            model="gemini-3.5-flash-lite",
+            contents=f"{summarize_prompt}\n\nТекст:\n{data.text}"
         )
     except Exception as error:
         raise HTTPException(status_code=502, detail=f"Ошибка Gemini API: {error}")
 
-    return {"result": response.output_text}
+    return {"result": response.text}
