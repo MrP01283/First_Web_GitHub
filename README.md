@@ -1,59 +1,71 @@
 # First Web App
 
-Простой проект с frontend и backend: пользователь вводит большой текст, backend отправляет его в Gemini API, а frontend показывает сокращенную версию.
+Приложение для AI-сокращения текста: FastAPI отдает frontend, принимает текст на `/summarize`, отправляет его в Gemini API и возвращает результат.
 
 ## Технологии
 
 - Frontend: HTML, CSS, JavaScript
-- Backend: Python, FastAPI
+- Backend: Python, FastAPI, Uvicorn
 - AI: Gemini API
 - Env: python-dotenv
 
-## Установка
+## Локальный запуск
 
-```
-powershell
+```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+uvicorn backend.main:app --reload
+```
+
+Открой:
+
+```text
+http://127.0.0.1:8000
+```
+
+Документация API:
+
+```text
+http://127.0.0.1:8000/docs
 ```
 
 ## API ключ
 
 Создай файл `.env` в корне проекта:
 
-```
-env
+```env
 GEMINI_API_KEY=твой_ключ
 ```
 
 Ключ можно получить в Google AI Studio:
 
+```text
 https://aistudio.google.com/app/apikey
+```
 
 Файл `.env` не коммить в git.
 
-## Запуск
+## Render
 
-Запусти backend из корня проекта:
+Создай Web Service из GitHub-репозитория.
 
-```
-powershell
-uvicorn backend.main:app --reload
-```
+Настройки:
 
-Документация API:
-
-```
-text
-http://127.0.0.1:8000/docs
+```text
+Runtime: Python 3
+Build Command: pip install -r requirements.txt
+Start Command: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
 ```
 
-Frontend открой в браузере:
+Environment Variables:
 
-```
-text
-frontend/index.html
+```text
+GEMINI_API_KEY=твой_ключ
 ```
 
-Т.е. сначало запускаешь backend в терминале, а потом открываешь index.html в frontend
+После деплоя frontend будет открываться прямо по Render-ссылке, например:
+
+```text
+https://first-web-github.onrender.com
+```

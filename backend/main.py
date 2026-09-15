@@ -4,6 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from google import genai
 from pydantic import BaseModel
 
@@ -32,8 +33,8 @@ class SummarizeRequest(BaseModel):
 
 
 @app.get("/")
-def root():
-    return {"message": "Backend работает"}
+def frontend():
+    return FileResponse(BASE_DIR / "frontend" / "index.html")
 
 
 @app.post("/hello")
