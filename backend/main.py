@@ -1,14 +1,18 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from google import genai
 from pydantic import BaseModel
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 app = FastAPI()
 
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=api_key, http_options={"timeout": 120000}) if api_key else None
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,4 +45,18 @@ def summarize(data: SummarizeRequest):
     if data.text.strip() == "":
         raise HTTPException(status_code=400, detail="Текст не должен быть пустым")
 
-    return {"result": data.text[:100]}
+    if client is None:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY не найден в .env")
+
+    try:
+        response = client.interactions.create(
+            model="gemini-3.8-flash",
+            input=f"Кратко сократи следующий текст, сохранив основные мысли:\n\n{data.text}",
+            generation_config={
+                "thinking_level": "low"
+            }
+        )
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Ошибка Gemini API: {error}")
+
+    return {"result": response.output_text}
