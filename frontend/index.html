@@ -21,7 +21,6 @@
         }
 
         button,
-        select,
         input {
             margin-top: 10px;
             padding: 8px 12px;
@@ -121,17 +120,13 @@
     <p id="inputCounter" class="counter">0 символов, 0 слов</p>
 
     <div class="summary-tools">
-        <select id="limitType">
-            <option value="chars">Символы</option>
-            <option value="words">Слова</option>
-        </select>
-        <input id="limitValue" type="number" min="5" value="5">
+        <input id="limitValue" type="number" min="1" value="1">
         <button id="summaryButton" class="summary-button" onclick="sendSummary()">Сократить</button>
         <button onclick="clearSummary()">Очистить</button>
     </div>
 
     <div class="limit-controls">
-        <input id="limitRange" type="range" min="5" max="5" value="5">
+        <input id="limitRange" type="range" min="1" max="1" value="1">
     </div>
 
     <div class="mode-controls">
@@ -152,18 +147,17 @@
 
     <p id="summaryResult"></p>
     <p id="outputCounter" class="counter">0 символов, 0 слов в результате</p>
+    <p id="debugTail" class="counter"></p>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
         const summaryInput = document.getElementById("summaryInput");
         const inputCounter = document.getElementById("inputCounter");
         const outputCounter = document.getElementById("outputCounter");
-        const limitType = document.getElementById("limitType");
         const limitValue = document.getElementById("limitValue");
         const limitRange = document.getElementById("limitRange");
 
         summaryInput.addEventListener("input", updateInputStats);
-        limitType.addEventListener("change", updateLimitControls);
         limitValue.addEventListener("input", syncRangeFromInput);
         limitRange.addEventListener("input", syncInputFromRange);
 
@@ -182,11 +176,11 @@
         }
 
         function getCurrentLimitMax() {
-            return limitType.value === "chars" ? summaryInput.value.length : countWords(summaryInput.value);
+            return countWords(summaryInput.value);
         }
 
         function getCurrentLimitMin() {
-            return limitType.value === "chars" ? 5 : 1;
+            return 1;
         }
 
         function updateLimitControls() {
@@ -236,9 +230,11 @@
 
         function clearSummary() {
             const summaryResult = document.getElementById("summaryResult");
+            const debugTail = document.getElementById("debugTail");
 
             summaryInput.value = "";
             summaryResult.innerHTML = "";
+            debugTail.textContent = "";
             updateInputStats();
             updateOutputCounter("");
         }
@@ -274,7 +270,7 @@
         async function sendSummary() {
             const text = summaryInput.value;
             const summaryResult = document.getElementById("summaryResult");
-            const selectedLimitType = limitType.value;
+            const debugTail = document.getElementById("debugTail");
             const selectedLimitValue = Number(limitValue.value);
             const sourceLimitMax = getCurrentLimitMax();
             const selectedMode = document.querySelector('input[name="summaryMode"]:checked').value;
@@ -291,28 +287,21 @@
                 return;
             }
 
-            if (selectedLimitType === "chars" && selectedLimitValue < 5) {
-                summaryResult.textContent = "Минимум 5 символов";
-                updateOutputCounter(summaryResult.textContent);
-                return;
-            }
-
-            if (selectedLimitType === "words" && selectedLimitValue < 1) {
+            if (selectedLimitValue < 1) {
                 summaryResult.textContent = "Минимум 1 слово";
                 updateOutputCounter(summaryResult.textContent);
                 return;
             }
 
             if (selectedLimitValue > sourceLimitMax) {
-                summaryResult.textContent = selectedLimitType === "chars"
-                    ? "Лимит больше количества символов в тексте"
-                    : "Лимит больше количества слов в тексте";
+                summaryResult.textContent = "Лимит больше количества слов в тексте";
                 updateOutputCounter(summaryResult.textContent);
                 return;
             }
 
             setSummaryLoading(true);
             summaryResult.textContent = "";
+            debugTail.textContent = "";
             updateOutputCounter("");
 
             try {
@@ -323,7 +312,6 @@
                     },
                     body: JSON.stringify({
                         text: text,
-                        limit_type: selectedLimitType,
                         limit_value: selectedLimitValue,
                         mode: selectedMode
                     })
@@ -331,11 +319,18 @@
 
                 const data = await response.json();
                 const resultText = data.result || data.detail || "Не удалось получить результат";
+                const debugReasonText = data.debug_reason === "too_many"
+                    ? "слов было много"
+                    : "слов было мало";
 
                 summaryResult.innerHTML = renderMarkdown(resultText);
+                debugTail.textContent = data.debug_tail
+                    ? `Фрагмент для проверки (${debugReasonText}): ${data.debug_tail}`
+                    : "";
                 updateOutputCounter(resultText);
             } catch (error) {
                 summaryResult.textContent = "Ошибка соединения";
+                debugTail.textContent = "";
                 updateOutputCounter(summaryResult.textContent);
             } finally {
                 setSummaryLoading(false);
