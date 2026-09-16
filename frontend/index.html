@@ -21,9 +21,19 @@
         }
 
         button,
-        select {
+        select,
+        input {
             margin-top: 10px;
             padding: 8px 12px;
+        }
+
+        input[type="number"] {
+            width: 110px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            padding: 0;
         }
 
         .summary-tools {
@@ -31,6 +41,28 @@
             gap: 8px;
             align-items: center;
             flex-wrap: wrap;
+        }
+
+        .limit-controls {
+            margin-top: 10px;
+        }
+
+        .mode-controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .mode-controls label {
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .mode-controls input {
+            margin-top: 0;
+            padding: 0;
         }
 
         .counter {
@@ -86,16 +118,31 @@
     <h1>AI-сокращение текста</h1>
 
     <textarea id="summaryInput" rows="8" placeholder="Вставьте большой текст, а AI выделит главное"></textarea>
-    <p id="inputCounter" class="counter">0 символов</p>
+    <p id="inputCounter" class="counter">0 символов, 0 слов</p>
 
     <div class="summary-tools">
-        <select id="summaryStyle">
-            <option value="short">Коротко</option>
-            <option value="detailed">Подробно</option>
-            <option value="list">Список</option>
+        <select id="limitType">
+            <option value="chars">Символы</option>
+            <option value="words">Слова</option>
         </select>
+        <input id="limitValue" type="number" min="5" value="5">
         <button id="summaryButton" class="summary-button" onclick="sendSummary()">Сократить</button>
         <button onclick="clearSummary()">Очистить</button>
+    </div>
+
+    <div class="limit-controls">
+        <input id="limitRange" type="range" min="5" max="5" value="5">
+    </div>
+
+    <div class="mode-controls">
+        <label>
+            <input type="radio" name="summaryMode" value="precise" checked>
+            Точная
+        </label>
+        <label>
+            <input type="radio" name="summaryMode" value="fast">
+            Быстрая
+        </label>
     </div>
 
     <div id="summaryLoading" class="loading-indicator">
@@ -104,22 +151,69 @@
     </div>
 
     <p id="summaryResult"></p>
-    <p id="outputCounter" class="counter">0 символов в результате</p>
+    <p id="outputCounter" class="counter">0 символов, 0 слов в результате</p>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
         const summaryInput = document.getElementById("summaryInput");
         const inputCounter = document.getElementById("inputCounter");
         const outputCounter = document.getElementById("outputCounter");
+        const limitType = document.getElementById("limitType");
+        const limitValue = document.getElementById("limitValue");
+        const limitRange = document.getElementById("limitRange");
 
-        summaryInput.addEventListener("input", updateInputCounter);
+        summaryInput.addEventListener("input", updateInputStats);
+        limitType.addEventListener("change", updateLimitControls);
+        limitValue.addEventListener("input", syncRangeFromInput);
+        limitRange.addEventListener("input", syncInputFromRange);
 
-        function updateInputCounter() {
-            inputCounter.textContent = `${summaryInput.value.length} символов`;
+        function countWords(text) {
+            const trimmedText = text.trim();
+            return trimmedText === "" ? 0 : trimmedText.split(/\s+/).length;
+        }
+
+        function updateInputStats() {
+            inputCounter.textContent = `${summaryInput.value.length} символов, ${countWords(summaryInput.value)} слов`;
+            updateLimitControls();
         }
 
         function updateOutputCounter(text) {
-            outputCounter.textContent = `${text.length} символов в результате`;
+            outputCounter.textContent = `${text.length} символов, ${countWords(text)} слов в результате`;
+        }
+
+        function getCurrentLimitMax() {
+            return limitType.value === "chars" ? summaryInput.value.length : countWords(summaryInput.value);
+        }
+
+        function getCurrentLimitMin() {
+            return limitType.value === "chars" ? 5 : 1;
+        }
+
+        function updateLimitControls() {
+            const min = getCurrentLimitMin();
+            const max = Math.max(min, getCurrentLimitMax());
+            const currentValue = Number(limitValue.value) || min;
+            const nextValue = Math.min(Math.max(currentValue, min), max);
+
+            limitValue.min = min;
+            limitValue.max = max;
+            limitValue.value = nextValue;
+
+            limitRange.min = min;
+            limitRange.max = max;
+            limitRange.value = nextValue;
+        }
+
+        function syncRangeFromInput() {
+            const min = getCurrentLimitMin();
+            const max = Number(limitValue.max);
+            const value = Number(limitValue.value) || min;
+
+            limitRange.value = Math.min(Math.max(value, min), max);
+        }
+
+        function syncInputFromRange() {
+            limitValue.value = limitRange.value;
         }
 
         function renderMarkdown(text) {
@@ -145,7 +239,7 @@
 
             summaryInput.value = "";
             summaryResult.innerHTML = "";
-            updateInputCounter();
+            updateInputStats();
             updateOutputCounter("");
         }
 
@@ -179,11 +273,40 @@
 
         async function sendSummary() {
             const text = summaryInput.value;
-            const style = document.getElementById("summaryStyle").value;
             const summaryResult = document.getElementById("summaryResult");
+            const selectedLimitType = limitType.value;
+            const selectedLimitValue = Number(limitValue.value);
+            const sourceLimitMax = getCurrentLimitMax();
+            const selectedMode = document.querySelector('input[name="summaryMode"]:checked').value;
 
             if (text.trim() === "") {
                 summaryResult.textContent = "Введите текст";
+                updateOutputCounter(summaryResult.textContent);
+                return;
+            }
+
+            if (!Number.isInteger(selectedLimitValue) || selectedLimitValue <= 0) {
+                summaryResult.textContent = "Введите корректный лимит";
+                updateOutputCounter(summaryResult.textContent);
+                return;
+            }
+
+            if (selectedLimitType === "chars" && selectedLimitValue < 5) {
+                summaryResult.textContent = "Минимум 5 символов";
+                updateOutputCounter(summaryResult.textContent);
+                return;
+            }
+
+            if (selectedLimitType === "words" && selectedLimitValue < 1) {
+                summaryResult.textContent = "Минимум 1 слово";
+                updateOutputCounter(summaryResult.textContent);
+                return;
+            }
+
+            if (selectedLimitValue > sourceLimitMax) {
+                summaryResult.textContent = selectedLimitType === "chars"
+                    ? "Лимит больше количества символов в тексте"
+                    : "Лимит больше количества слов в тексте";
                 updateOutputCounter(summaryResult.textContent);
                 return;
             }
@@ -200,7 +323,9 @@
                     },
                     body: JSON.stringify({
                         text: text,
-                        style: style
+                        limit_type: selectedLimitType,
+                        limit_value: selectedLimitValue,
+                        mode: selectedMode
                     })
                 });
 
@@ -216,6 +341,8 @@
                 setSummaryLoading(false);
             }
         }
+
+        updateInputStats();
     </script>
 
 </body>
