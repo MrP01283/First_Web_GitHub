@@ -15,6 +15,8 @@ app = FastAPI()
 
 api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key, http_options={"timeout": 120000}) if api_key else None
+WORD_PATTERN = re.compile(r"[A-Za-zА-Яа-яЁё0-9]+(?:[-'][A-Za-zА-Яа-яЁё0-9]+)*")
+MAX_PRECISE_ATTEMPTS = 3
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,14 +37,19 @@ class SummarizeRequest(BaseModel):
 
 
 def count_words(text: str) -> int:
-    return len(text.split())
+    return len(WORD_PATTERN.findall(text))
 
 
 def trim_to_word_limit(text: str, limit_value: int) -> str:
     if count_words(text) <= limit_value:
         return text.strip()
 
-    return " ".join(text.split()[:limit_value]).strip()
+    matches = list(WORD_PATTERN.finditer(text))
+
+    if len(matches) <= limit_value:
+        return text.strip()
+
+    return text[:matches[limit_value - 1].end()].strip()
 
 
 def split_sentences(text: str) -> list[str]:
@@ -100,7 +107,7 @@ def summarize(data: SummarizeRequest):
     if client is None:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY не найден в .env")
 
-    limit_prompt = f"Ответ должен быть не длиннее {data.limit_value} слов."
+    limit_prompt = f"Ответ должен быть ровно на {data.limit_value} слов."
 
     try:
         debug_tail = ""
@@ -110,51 +117,66 @@ def summarize(data: SummarizeRequest):
             contents=(
                 "Сократи текст, сохранив основные мысли. "
                 f"{limit_prompt} Верни только готовый текст без пояснений и заголовков. "
-                "Перед ответом проверь длину.\n\n"
+                "Не делай ответ короче или длиннее заданного лимита. Перед ответом проверь количество слов.\n\n"
                 f"Текст:\n{data.text}"
             )
         )
 
         result_text = response.text.strip()
-        result_size = count_words(result_text)
 
-        if data.mode == "precise" and result_size > data.limit_value:
-            overflow_size = result_size - data.limit_value
-            prefix_text, tail_text = split_overflow_parts(result_text, overflow_size)
-            target_tail_size = count_words(tail_text) - overflow_size
-            debug_tail = tail_text
-            debug_reason = "too_many"
+        if data.mode == "precise":
+            for _ in range(MAX_PRECISE_ATTEMPTS):
+                result_size = count_words(result_text)
 
-            if target_tail_size > 0 and tail_text:
+                if result_size == data.limit_value:
+                    break
+
+                if result_size > data.limit_value:
+                    overflow_size = result_size - data.limit_value
+                    prefix_text, tail_text = split_overflow_parts(result_text, overflow_size)
+                    target_tail_size = count_words(tail_text) - overflow_size
+                    debug_tail = tail_text
+                    debug_reason = "too_many"
+
+                    if target_tail_size <= 0 or not tail_text:
+                        break
+
+                    adjustment_response = client.models.generate_content(
+                        model="gemini-3.5-flash-lite",
+                        contents=(
+                            "Сократи фрагмент так, чтобы он естественно продолжал предыдущий текст. "
+                            f"Фрагмент должен быть ровно на {target_tail_size} слов. "
+                            "Не добавляй заголовки, пояснения или списки, если их не было во фрагменте. "
+                            "Верни только переписанный фрагмент.\n\n"
+                            f"Предыдущий текст:\n{prefix_text}\n\n"
+                            f"Фрагмент:\n{tail_text}"
+                        )
+                    )
+                    adjusted_tail = adjustment_response.text.strip()
+                    result_text = f"{prefix_text} {adjusted_tail}".strip() if prefix_text else adjusted_tail
+                    continue
+
+                prefix_text, tail_text = split_overflow_parts(result_text, 0)
+                target_tail_size = data.limit_value - count_words(prefix_text)
+                debug_tail = tail_text
+                debug_reason = "too_few"
+
+                if target_tail_size <= count_words(tail_text) or not tail_text:
+                    break
+
                 adjustment_response = client.models.generate_content(
                     model="gemini-3.5-flash-lite",
                     contents=(
-                        "Сократи фрагмент так, чтобы он естественно продолжал предыдущий текст. "
+                        "Перепиши фрагмент так, чтобы он естественно завершал предыдущий текст. "
                         f"Фрагмент должен быть ровно на {target_tail_size} слов. "
-                        "Не добавляй заголовки, пояснения или списки, если их не было во фрагменте. "
-                        "Верни только переписанный фрагмент.\n\n"
+                        "Сохрани смысл, не добавляй новую тему и не повторяй уже сказанное. "
+                        "Верни только переписанный фрагмент без заголовков и пояснений.\n\n"
                         f"Предыдущий текст:\n{prefix_text}\n\n"
                         f"Фрагмент:\n{tail_text}"
                     )
                 )
                 adjusted_tail = adjustment_response.text.strip()
                 result_text = f"{prefix_text} {adjusted_tail}".strip() if prefix_text else adjusted_tail
-
-        if data.mode == "precise" and result_size < data.limit_value:
-            missing_size = data.limit_value - result_size
-            debug_reason = "too_few"
-            continuation_response = client.models.generate_content(
-                model="gemini-3.5-flash-lite",
-                contents=(
-                    "Продолжи этот сокращенный текст так, чтобы продолжение выглядело естественно "
-                    "и не повторяло уже сказанное. "
-                    f"Продолжение должно быть ровно на {missing_size} слов. "
-                    "Верни только продолжение без заголовков и пояснений.\n\n"
-                    f"Текст:\n{result_text}"
-                )
-            )
-            continuation_text = continuation_response.text.strip()
-            result_text = f"{result_text} {continuation_text}".strip()
 
         result_text = trim_to_word_limit(result_text, data.limit_value)
     except Exception as error:

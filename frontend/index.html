@@ -162,8 +162,8 @@
         limitRange.addEventListener("input", syncInputFromRange);
 
         function countWords(text) {
-            const trimmedText = text.trim();
-            return trimmedText === "" ? 0 : trimmedText.split(/\s+/).length;
+            const words = text.match(/[\p{L}\p{N}]+(?:[-'][\p{L}\p{N}]+)*/gu);
+            return words ? words.length : 0;
         }
 
         function updateInputStats() {
@@ -322,10 +322,13 @@
                 const debugReasonText = data.debug_reason === "too_many"
                     ? "слов было много"
                     : "слов было мало";
+                const debugLabel = data.debug_reason === "too_many"
+                    ? "Фрагмент для проверки"
+                    : "Контекст для продолжения";
 
                 summaryResult.innerHTML = renderMarkdown(resultText);
                 debugTail.textContent = data.debug_tail
-                    ? `Фрагмент для проверки (${debugReasonText}): ${data.debug_tail}`
+                    ? `${debugLabel} (${debugReasonText}): ${data.debug_tail}`
                     : "";
                 updateOutputCounter(resultText);
             } catch (error) {
