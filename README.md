@@ -69,3 +69,8 @@ GEMINI_API_KEY=твой_ключ
 ```text
 https://first-web-github.onrender.com
 ```
+
+
+
+
+АШИЛЬ КРАСАВЧИК ЧТО?

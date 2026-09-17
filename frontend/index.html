@@ -89,6 +89,40 @@
             align-items: center;
         }
 
+        .hidden {
+            display: none;
+        }
+
+        .page-header,
+        .history-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .history-item {
+            margin-top: 16px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+
+        .history-meta {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .history-text {
+            white-space: pre-wrap;
+        }
+
+        .danger-button {
+            background: #c62828;
+            color: white;
+        }
+
         .spinner {
             width: 14px;
             height: 14px;
@@ -107,47 +141,64 @@
 </head>
 <body>
 
-    <h1>Приветствие</h1>
+    <div id="mainView">
+        <div class="page-header">
+            <h1>Приветствие</h1>
+            <button onclick="showHistory()">История</button>
+        </div>
 
-    <input id="nameInput" type="text" placeholder="Введите имя">
-    <button onclick="sendName()">Отправить</button>
+        <input id="nameInput" type="text" placeholder="Введите имя">
+        <button onclick="sendName()">Отправить</button>
 
-    <p id="result"></p>
+        <p id="result"></p>
 
-    <h1>AI-сокращение текста</h1>
+        <h1>AI-сокращение текста</h1>
 
-    <textarea id="summaryInput" rows="8" placeholder="Вставьте большой текст, а AI выделит главное"></textarea>
-    <p id="inputCounter" class="counter">0 символов, 0 слов</p>
+        <textarea id="summaryInput" rows="8" placeholder="Вставьте большой текст, а AI выделит главное"></textarea>
+        <p id="inputCounter" class="counter">0 символов, 0 слов</p>
 
-    <div class="summary-tools">
-        <input id="limitValue" type="number" min="1" value="1">
-        <button id="summaryButton" class="summary-button" onclick="sendSummary()">Сократить</button>
-        <button onclick="clearSummary()">Очистить</button>
+        <div class="summary-tools">
+            <input id="limitValue" type="number" min="1" value="1">
+            <button id="summaryButton" class="summary-button" onclick="sendSummary()">Сократить</button>
+            <button onclick="clearSummary()">Очистить</button>
+        </div>
+
+        <div class="limit-controls">
+            <input id="limitRange" type="range" min="1" max="1" value="1">
+        </div>
+
+        <div class="mode-controls">
+            <label>
+                <input type="radio" name="summaryMode" value="precise" checked>
+                Точная
+            </label>
+            <label>
+                <input type="radio" name="summaryMode" value="fast">
+                Быстрая
+            </label>
+        </div>
+
+        <div id="summaryLoading" class="loading-indicator">
+            <span class="spinner"></span>
+            <span>AI сокращает текст...</span>
+        </div>
+
+        <p id="summaryResult"></p>
+        <p id="outputCounter" class="counter">0 символов, 0 слов в результате</p>
+        <p id="debugTail" class="counter"></p>
     </div>
 
-    <div class="limit-controls">
-        <input id="limitRange" type="range" min="1" max="1" value="1">
+    <div id="historyView" class="hidden">
+        <div class="page-header">
+            <h1>История сокращений</h1>
+            <div class="history-actions">
+                <button onclick="showMain()">Назад</button>
+                <button class="danger-button" onclick="clearHistory()">Очистить историю</button>
+            </div>
+        </div>
+        <p id="historyStatus" class="counter"></p>
+        <div id="historyList"></div>
     </div>
-
-    <div class="mode-controls">
-        <label>
-            <input type="radio" name="summaryMode" value="precise" checked>
-            Точная
-        </label>
-        <label>
-            <input type="radio" name="summaryMode" value="fast">
-            Быстрая
-        </label>
-    </div>
-
-    <div id="summaryLoading" class="loading-indicator">
-        <span class="spinner"></span>
-        <span>AI сокращает текст...</span>
-    </div>
-
-    <p id="summaryResult"></p>
-    <p id="outputCounter" class="counter">0 символов, 0 слов в результате</p>
-    <p id="debugTail" class="counter"></p>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
@@ -156,6 +207,10 @@
         const outputCounter = document.getElementById("outputCounter");
         const limitValue = document.getElementById("limitValue");
         const limitRange = document.getElementById("limitRange");
+        const mainView = document.getElementById("mainView");
+        const historyView = document.getElementById("historyView");
+        const historyStatus = document.getElementById("historyStatus");
+        const historyList = document.getElementById("historyList");
 
         summaryInput.addEventListener("input", updateInputStats);
         limitValue.addEventListener("input", syncRangeFromInput);
@@ -226,6 +281,120 @@
             summaryButton.disabled = isLoading;
             summaryButton.classList.toggle("loading", isLoading);
             summaryLoading.classList.toggle("active", isLoading);
+        }
+
+        function showMain() {
+            historyView.classList.add("hidden");
+            mainView.classList.remove("hidden");
+        }
+
+        async function showHistory() {
+            mainView.classList.add("hidden");
+            historyView.classList.remove("hidden");
+            await loadHistory();
+        }
+
+        function formatDate(value) {
+            return new Date(value).toLocaleString("ru-RU");
+        }
+
+        function getModeText(mode) {
+            return mode === "fast" ? "Быстрая" : "Точная";
+        }
+
+        function renderHistory(items) {
+            historyList.innerHTML = "";
+
+            if (items.length === 0) {
+                historyStatus.textContent = "История пустая";
+                return;
+            }
+
+            historyStatus.textContent = "";
+
+            items.forEach((item) => {
+                const card = document.createElement("div");
+                card.className = "history-item";
+
+                const meta = document.createElement("p");
+                meta.className = "history-meta";
+                meta.textContent = `${formatDate(item.created_at)} | ${getModeText(item.mode)} | лимит: ${item.limit_value} слов | было: ${item.source_words}, стало: ${item.result_words}`;
+
+                const sourceTitle = document.createElement("strong");
+                sourceTitle.textContent = "Исходный текст";
+
+                const source = document.createElement("p");
+                source.className = "history-text";
+                source.textContent = item.source_text;
+
+                const resultTitle = document.createElement("strong");
+                resultTitle.textContent = item.status === "success" ? "Сокращение" : "Ошибка";
+
+                const result = document.createElement("p");
+                result.className = "history-text";
+                result.textContent = item.status === "success" ? item.result_text : item.error_text;
+
+                const deleteButton = document.createElement("button");
+                deleteButton.className = "danger-button";
+                deleteButton.textContent = "Удалить";
+                deleteButton.addEventListener("click", () => deleteHistoryItem(item.id));
+
+                card.append(meta, sourceTitle, source, resultTitle, result, deleteButton);
+                historyList.appendChild(card);
+            });
+        }
+
+        async function loadHistory() {
+            historyStatus.textContent = "Загрузка истории...";
+            historyList.innerHTML = "";
+
+            try {
+                const response = await fetch("/history");
+                const data = await response.json();
+
+                if (!response.ok) {
+                    historyStatus.textContent = data.detail || "Не удалось загрузить историю";
+                    return;
+                }
+
+                renderHistory(data.items || []);
+            } catch (error) {
+                historyStatus.textContent = "Ошибка соединения";
+            }
+        }
+
+        async function deleteHistoryItem(id) {
+            try {
+                const response = await fetch(`/history/${id}`, {
+                    method: "DELETE"
+                });
+
+                if (!response.ok) {
+                    historyStatus.textContent = "Не удалось удалить запись";
+                    return;
+                }
+
+                await loadHistory();
+            } catch (error) {
+                historyStatus.textContent = "Ошибка соединения";
+            }
+        }
+
+        async function clearHistory() {
+            try {
+                const response = await fetch("/history", {
+                    method: "DELETE"
+                });
+
+                if (!response.ok) {
+                    historyStatus.textContent = "Не удалось очистить историю";
+                    return;
+                }
+
+                await loadHistory();
+            } catch (error) {
+                historyStatus.textContent = "Ошибка соединения";
+            }
         }
 
         function clearSummary() {

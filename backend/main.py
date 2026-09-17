@@ -9,6 +9,14 @@ from fastapi.responses import FileResponse
 from google import genai
 from pydantic import BaseModel
 
+from backend.database import (
+    clear_history_entries,
+    delete_history_entry,
+    get_history_items,
+    init_db,
+    save_history_entry,
+)
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 app = FastAPI()
@@ -78,6 +86,9 @@ def split_overflow_parts(text: str, overflow_size: int) -> tuple[str, str]:
     return " ".join(prefix_sentences).strip(), " ".join(tail_sentences).strip()
 
 
+init_db()
+
+
 @app.get("/")
 def frontend():
     return FileResponse(BASE_DIR / "frontend" / "index.html")
@@ -86,6 +97,25 @@ def frontend():
 @app.post("/hello")
 def hello(data: UserData):
     return {"message": f"Привет, {data.name}!"}
+
+
+@app.get("/history")
+def get_history():
+    return {"items": get_history_items()}
+
+
+@app.delete("/history")
+def clear_history():
+    clear_history_entries()
+    return {"message": "История очищена"}
+
+
+@app.delete("/history/{history_id}")
+def delete_history_item(history_id: int):
+    if not delete_history_entry(history_id):
+        raise HTTPException(status_code=404, detail="Запись истории не найдена")
+
+    return {"message": "Запись удалена"}
 
 
 @app.post("/summarize")
@@ -180,6 +210,26 @@ def summarize(data: SummarizeRequest):
 
         result_text = trim_to_word_limit(result_text, data.limit_value)
     except Exception as error:
-        raise HTTPException(status_code=502, detail=f"Ошибка Gemini API: {error}")
+        error_message = f"Ошибка Gemini API: {error}"
+        save_history_entry(
+            source_text=data.text,
+            result_text="",
+            limit_value=data.limit_value,
+            mode=data.mode,
+            source_words=word_count,
+            result_words=0,
+            status="error",
+            error_text=error_message,
+        )
+        raise HTTPException(status_code=502, detail=error_message)
 
+    save_history_entry(
+        source_text=data.text,
+        result_text=result_text,
+        limit_value=data.limit_value,
+        mode=data.mode,
+        source_words=word_count,
+        result_words=count_words(result_text),
+        status="success",
+    )
     return {"result": result_text, "debug_tail": debug_tail, "debug_reason": debug_reason}
